@@ -5,8 +5,9 @@
 - tasks      探测任务：源节点 + 协议 + 目标 + 间隔
 - results    探测结果时序（每次探测一行）
 - resources  节点资源时序（每次心跳一行）
-- meta       元信息
+- meta       元信息（schema_version、last_prune）
 时间戳：时序与 last_seen 用 epoch 毫秒（INTEGER）；created_at 用本地可读字符串。
+在线/离线在“读时计算”（按 last_seen），不在公开读路径写库。
 """
 import hashlib
 import os
@@ -20,6 +21,7 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.abspa
 DB_PATH = os.path.join(DATA_DIR, "nc.sqlite")
 
 OFFLINE_AFTER_SEC = int(os.environ.get("OFFLINE_AFTER_SEC", "60"))  # 超过此秒数无心跳判离线
+RETAIN_DAYS = int(os.environ.get("RETAIN_DAYS", "3"))               # 时序保留天数
 
 
 def now_ms() -> int:
@@ -42,7 +44,8 @@ def hash_token(token: str) -> str:
 def get_conn():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")     # 锁等待最多 5s，避免 SQLITE_BUSY 直接 500
+    conn.execute("PRAGMA synchronous=NORMAL")    # WAL 下安全，降低 fsync 开销
     conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
@@ -112,8 +115,17 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     with get_conn() as c:
+        c.execute("PRAGMA journal_mode=WAL")     # 仅在初始化时设一次（持久化于 db 文件）
         c.executescript(SCHEMA)
         c.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')")
+
+
+def _effective_status(row):
+    """按 last_seen 实时判定在线/离线（读时计算，不写库）。"""
+    ls = row.get("last_seen")
+    if ls and ls >= now_ms() - OFFLINE_AFTER_SEC * 1000:
+        return "online"
+    return "offline"
 
 
 # ----------------------------- 节点 -----------------------------
@@ -132,7 +144,10 @@ def create_node(name, label_1="", label_2="", label_3=""):
 
 def list_nodes():
     with get_conn() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM nodes ORDER BY created_at").fetchall()]
+        rows = [dict(r) for r in c.execute("SELECT * FROM nodes ORDER BY created_at").fetchall()]
+    for n in rows:
+        n["status"] = _effective_status(n)   # 读时计算
+    return rows
 
 
 def get_node(nid):
@@ -142,6 +157,8 @@ def get_node(nid):
 
 
 def get_node_by_token(token):
+    if not token:
+        return None
     with get_conn() as c:
         r = c.execute("SELECT * FROM nodes WHERE token_hash=?", (hash_token(token),)).fetchone()
     return dict(r) if r else None
@@ -159,8 +176,7 @@ def update_node(nid, **fields):
 
 def delete_node(nid):
     with get_conn() as c:
-        rows = c.execute("SELECT id FROM tasks WHERE source_node_id=?", (nid,)).fetchall()
-        tids = [r["id"] for r in rows]
+        tids = [r["id"] for r in c.execute("SELECT id FROM tasks WHERE source_node_id=?", (nid,)).fetchall()]
         for tid in tids:
             c.execute("DELETE FROM results WHERE task_id=?", (tid,))
         c.execute("DELETE FROM tasks WHERE source_node_id=?", (nid,))
@@ -212,7 +228,7 @@ _RESULT_FIELDS = ("latency", "packet_loss", "jitter", "success", "dns_time", "tc
 
 
 def record_heartbeat(nid, resources=None, agent_version=None, public_ip=None, private_ip=None):
-    """更新节点最新快照 + 状态在线 + last_seen，并写一行资源时序。"""
+    """更新节点最新快照 + status='online' + last_seen，并写一行资源时序。"""
     ts = now_ms()
     res = {k: (resources or {}).get(k) for k in _RES_FIELDS}
     with get_conn() as c:
@@ -231,16 +247,17 @@ def record_heartbeat(nid, resources=None, agent_version=None, public_ip=None, pr
                 (nid, ts, res["cpu"], res["mem"], res["disk"], res["load"],
                  res["net_in"], res["net_out"], res["uptime_days"]),
             )
+    maybe_prune()  # 节流清理挂在已鉴权的上报路径，不影响公开读
 
 
 def insert_results(node_id, results):
-    """写入一批探测结果。仅接受属于该节点的任务，防止越权写他人任务。"""
+    """批量写入探测结果。仅接受属于该节点的任务，防止越权写他人任务。"""
     if not results:
         return 0
     with get_conn() as c:
         own = {r["id"] for r in c.execute(
             "SELECT id FROM tasks WHERE source_node_id=?", (node_id,)).fetchall()}
-        n = 0
+        rows = []
         for item in results:
             tid = item.get("task_id")
             if tid not in own:
@@ -252,26 +269,41 @@ def insert_results(node_id, results):
                 if f == "success" and v is not None:
                     v = 1 if v else 0
                 vals.append(v)
-            c.execute(
+            rows.append((tid, ts, *vals))
+        if rows:
+            c.executemany(
                 "INSERT INTO results (task_id, ts, latency, packet_loss, jitter, success, dns_time, "
                 "tcp_time, tls_time, ttfb, total_time, status_code, resolved_ip) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (tid, ts, *vals),
+                rows,
             )
-            n += 1
-    return n
+    return len(rows)
+
+
+# ----------------------------- 保留清理 -----------------------------
+def prune_old(days=None):
+    days = RETAIN_DAYS if days is None else days
+    cutoff = now_ms() - days * 86400 * 1000
+    with get_conn() as c:
+        c.execute("DELETE FROM results WHERE ts < ?", (cutoff,))
+        c.execute("DELETE FROM resources WHERE ts < ?", (cutoff,))
+
+
+def maybe_prune(min_interval_sec=3600):
+    """节流：距上次清理超过 min_interval 才真正清，避免每次心跳都删。"""
+    with get_conn() as c:
+        row = c.execute("SELECT value FROM meta WHERE key='last_prune'").fetchone()
+        last = int(row["value"]) if row and row["value"] else 0
+        if now_ms() - last < min_interval_sec * 1000:
+            return
+        c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('last_prune', ?)", (str(now_ms()),))
+    prune_old()
 
 
 # ----------------------------- 查询 -----------------------------
-def mark_stale_offline():
-    cutoff = now_ms() - OFFLINE_AFTER_SEC * 1000
-    with get_conn() as c:
-        c.execute("UPDATE nodes SET status='offline' WHERE status='online' AND (last_seen IS NULL OR last_seen < ?)", (cutoff,))
-
-
 def get_overview():
-    """公开总览：节点（含最新快照）+ 任务（含最新结果 + 近 24 点延迟 spark）+ 汇总。"""
-    mark_stale_offline()
+    """公开总览：节点（含最新快照）+ 任务（含最新结果 + 近 24 点延迟 spark）+ 汇总。
+    在线/离线读时计算，不写库。"""
     nodes = list_nodes()
     with get_conn() as c:
         tasks = [dict(r) for r in c.execute("SELECT * FROM tasks ORDER BY created_at").fetchall()]

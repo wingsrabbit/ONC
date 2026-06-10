@@ -4,6 +4,7 @@
 - 管理（X-Admin-Token）：/api/nodes、/api/tasks 的增删查
 - agent（节点 token，Authorization: Bearer）：/api/agent/tasks、/api/agent/report
 """
+import hmac
 import os
 from functools import wraps
 
@@ -14,6 +15,7 @@ import db
 api_bp = Blueprint("api", __name__)
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 REPORT_INTERVAL = int(os.environ.get("REPORT_INTERVAL", "10"))
+PROTOCOLS = ("icmp", "tcp", "udp", "http", "dns")
 
 
 def _public_node(n):
@@ -24,12 +26,19 @@ def _public_node(n):
     return n
 
 
+def _int_or(v, default):
+    """安全转 int；None→default，非法→抛 ValueError 由调用方转 400。"""
+    if v is None:
+        return default
+    return int(v)
+
+
 def require_admin(f):
     @wraps(f)
     def w(*a, **k):
         if not ADMIN_TOKEN:
             return jsonify({"error": "admin API 未启用（后端未设置 ADMIN_TOKEN）"}), 503
-        if request.headers.get("X-Admin-Token") != ADMIN_TOKEN:
+        if not hmac.compare_digest(request.headers.get("X-Admin-Token", ""), ADMIN_TOKEN):
             return jsonify({"error": "unauthorized"}), 401
         return f(*a, **k)
     return w
@@ -56,16 +65,22 @@ def public_overview():
     return jsonify(data)
 
 
+def _clamp_minutes(v):
+    try:
+        m = int(v) if v is not None else 30
+    except (TypeError, ValueError):
+        m = 30
+    return min(max(m, 1), 1440)  # 钳到 [1 分钟, 24 小时]，防公开端点拉全表
+
+
 @api_bp.get("/public/node/<nid>/history")
 def public_node_history(nid):
-    minutes = request.args.get("minutes", 30, type=int)
-    return jsonify({"history": db.get_node_history(nid, minutes)})
+    return jsonify({"history": db.get_node_history(nid, _clamp_minutes(request.args.get("minutes")))})
 
 
 @api_bp.get("/public/task/<tid>/history")
 def public_task_history(tid):
-    minutes = request.args.get("minutes", 30, type=int)
-    return jsonify({"history": db.get_task_history(tid, minutes)})
+    return jsonify({"history": db.get_task_history(tid, _clamp_minutes(request.args.get("minutes")))})
 
 
 # ----------------------------- 管理 -----------------------------
@@ -100,11 +115,19 @@ def admin_create_task():
     for f in ("name", "source_node_id", "protocol"):
         if not b.get(f):
             return jsonify({"error": f"{f} required"}), 400
+    if b["protocol"] not in PROTOCOLS:
+        return jsonify({"error": "protocol must be one of " + "/".join(PROTOCOLS)}), 400
+    try:
+        interval = _int_or(b.get("interval"), 5)
+        timeout = _int_or(b.get("timeout"), 5)
+        port = _int_or(b.get("target_port"), None)
+    except (TypeError, ValueError):
+        return jsonify({"error": "interval/timeout/target_port must be integers"}), 400
     tid = db.create_task(
         b["name"], b["source_node_id"], b["protocol"],
         target_address=b.get("target_address"), target_type=b.get("target_type", "external"),
-        target_node_id=b.get("target_node_id"), target_port=b.get("target_port"),
-        interval=int(b.get("interval", 5)), timeout=int(b.get("timeout", 5)),
+        target_node_id=b.get("target_node_id"), target_port=port,
+        interval=interval, timeout=timeout,
     )
     return jsonify({"id": tid}), 201
 
@@ -124,7 +147,7 @@ def admin_delete_task(tid):
 
 # ----------------------------- agent -----------------------------
 def _resolve_target(t):
-    """内部目标：解析为目标节点的 IP；外部目标：直接用地址。"""
+    """内部目标：解析为目标节点的 IP（跨 VPS 用公网 IP）；外部目标：直接用地址。"""
     if t.get("target_type") == "internal" and t.get("target_node_id"):
         tn = db.get_node(t["target_node_id"])
         if tn and (tn.get("public_ip") or tn.get("private_ip")):
