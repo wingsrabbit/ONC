@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+## [0.2] - 2026-06-10
+### 新增
+- **后端数据层**（SQLite）：nodes / tasks / results / resources + 节点 token(sha256) 鉴权 + 在线/离线读时判定 + 时序保留清理。
+- **REST API**：公开总览/历史；admin 节点/任务（X-Admin-Token）；agent 取任务/上报（Bearer token）。
+- **manage.py** CLI（建节点/任务，直连 DB）。
+- 经独立复审并应用修复：公开读路径不写库、`busy_timeout`、admin token 恒定时间比较、入参校验、保留清理。
+
 ## [0.1] - 2026-06-10
 ### 新增
 - **前端工程**：Vite + React（ESM），复用 cd 设计系统 `styles.css`；将设计原型干净 ESM 化（`data` / `ui` / `sparkline` / `store` / `PublicHome`），去掉 babel-in-browser 与 CDN。
