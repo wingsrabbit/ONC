@@ -1,0 +1,12 @@
+# 构建上下文瘦身：以下不进镜像构建
+**/node_modules
+frontend/dist
+backend/data
+**/__pycache__
+**/*.pyc
+origin/
+docs/
+.git/
+*.local.md
+TermRat-NC.zip
+.DS_Store
