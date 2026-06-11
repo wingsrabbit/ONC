@@ -76,6 +76,12 @@ export function useOverview(intervalMs = 10000) {
   return { data, error };
 }
 
+export function getNodeDetail(id) {
+  return fetch(`/api/public/node/${id}`).then((r) => r.json());
+}
+export function getTaskDetail(id) {
+  return fetch(`/api/public/task/${id}`).then((r) => r.json());
+}
 export function getNodeHistory(id, minutes = 30) {
   return fetch(`/api/public/node/${id}/history?minutes=${minutes}`).then((r) => r.json());
 }
