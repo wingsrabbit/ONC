@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [0.9] - 2026-06-11
+### 新增
+- **HTTPS 支持（内嵌 Caddy）**：center 镜像内置 Caddy 作 web 前置，反代到 gunicorn:8080。管理后台「系统设置 → Web 访问 / HTTPS」可在线切换四种模式并**热重载**（配置非法自动保持原配置，不中断访问）：
+  - `http`（默认）：纯 HTTP，监听 80；
+  - `https-le`：**Let's Encrypt** 自动签发（填域名，需解析到本机 + 80/443 可达）；
+  - `https-custom`：**上传自有证书**（PEM 证书 + 私钥，存 `/app/data/certs`）；
+  - `https-selfsigned`：自生成自签证书（cryptography，对任意 SNI/纯 IP 出示同证书），适合 IP-only 测试机。
+- **端口可配**：web HTTP/HTTPS 端口可改；agent **上报端口**走独立 8080（与 web TLS 解耦，兼容现有 agent 不动）；agent **互测端口**（HTTP/HTTPS/UDP）此前已支持 `NC_TEST_*` env 自定义，避免默认端口被屏蔽。
+### 变更
+- **容器改双进程**：`supervisord` 同容器拉起 gunicorn + caddy（均 autorestart），入口 `deploy/entrypoint.sh` 启动时据 DB 设置生成 Caddyfile（带兜底 HTTP 配置）。Caddy 证书/数据落 `/app/data/caddy-data`（卷持久化，LE 证书跨重启复用）。
+- **部署端口**：`-p 80:80 -p 443:443 -p 8080:8080`（80/443=浏览器 web，8080=agent 上报 + 管理兜底，始终直连可用）。
+### 后端
+- 新增 `backend/webserver.py`（Caddyfile 生成 + `caddy reload` 热重载 + 访问地址推导）、`backend/gen_caddyfile.py`（启动期生成）。
+- 新增 API：`GET/POST /api/web/config`、`POST /api/web/cert`；设置项新增 `web_mode/web_domain/web_email/web_http_port/web_https_port`。
+- Dockerfile 多阶段引入官方 `caddy:2` 二进制 + `supervisor`，`EXPOSE 80 443 8080`。
+
 ## [0.84] - 2026-06-11
 ### 新增
 - **节点编辑**：节点管理新增「编辑」按钮 + 弹窗，可改节点名称与 3 个标签（地区/线路/可选），无需删除重建。
