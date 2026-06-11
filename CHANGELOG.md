@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [0.711] - 2026-06-11
+### 修复
+- **agent 版本号不再写死**：`agent/main.py` 优先环境变量 `AGENT_VERSION`，否则读镜像内 `VERSION`（回退 0.71），避免显示陈旧的 0.3。
+- `agent/Dockerfile` 改为仓库根构建上下文（`docker build -f agent/Dockerfile .`）并拷入根 `VERSION`，使容器内可读版本号。
+
 ## [0.71] - 2026-06-11
 ### 修复
 - **公开页 / 仪表盘纳入阈值告警**（e2e 联调发现）：`api.js normalize()` 的 `alerting` 此前只看最近探测 `success`，漏了 v0.5 告警引擎的 `alert_status`（延迟/丢包阈值告警）。修复后公开主页网络质量表「状态」列、顶部异常横幅、管理仪表盘「活跃告警」KPI 与任务卡均正确反映阈值告警（线路详情/告警历史本就正确）。
