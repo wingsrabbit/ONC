@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [0.6] - 2026-06-11
+### 新增
+- **公开详情页**：节点详情（/node/:id，固定近 30min 的 CPU/内存/磁盘 + 上下行流量曲线 + 即时值 + 该节点探测线路列表）、线路详情（/probe/:id，固定近 30min 延迟/丢包/抖动曲线 + 当前/均值/丢包/可用率）。对客简版。
+- `charts.jsx`（echarts：EChart/TimeChart/ProbeMiniChart/ResourceChart/TrafficChart）ESM 化（由 subagent 移植）；`api.js` 加 getNodeDetail/getTaskDetail；`App.jsx` 落地 /node/:id、/probe/:id（替换占位）。
+
 ## [0.5] - 2026-06-11
 ### 新增
 - **管理端鉴权**：用户表（pbkdf2 密码）+ 会话 token + 角色（admin/readonly）；/api/auth/login|logout|me；首启自动建默认管理员（admin/admin，可经 env 改）。
