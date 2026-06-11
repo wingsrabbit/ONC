@@ -1,5 +1,5 @@
 /* ============================================================
-   ONC — 应用根 + 路由（v0.1：公开主页可用，其余路由占位）
+   ONC — 应用根 + 路由（公开页 + 管理端 /admin）
    ============================================================ */
 import React from "react";
 import { AppProvider, useApp } from "./store.jsx";
@@ -7,21 +7,16 @@ import { ToastProvider, Ic } from "./ui.jsx";
 import { PublicHome } from "./pages/PublicHome.jsx";
 import { NodeDetail } from "./pages/NodeDetail.jsx";
 import { ProbeDetail } from "./pages/ProbeDetail.jsx";
-
-/* 后续增量（v0.2/v0.3）落地的占位页 */
-function Placeholder({ title, hint }) {
-  const { navigate } = useApp();
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 14, background: "var(--panel)", padding: 24 }}>
-      <div style={{ width: 52, height: 52, borderRadius: 14, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Ic name="activity" size={24} style={{ color: "var(--primary)" }} />
-      </div>
-      <h2 className="h2">{title}</h2>
-      <p className="muted" style={{ textAlign: "center", maxWidth: 360 }}>{hint || "该页面将在后续版本增量实现。"}</p>
-      <button className="btn primary" onClick={() => navigate("/")}>返回公开主页</button>
-    </div>
-  );
-}
+import { Login } from "./pages/admin/Login.jsx";
+import { AdminShell } from "./pages/admin/AdminShell.jsx";
+import { Dashboard } from "./pages/admin/Dashboard.jsx";
+import { TaskDetail } from "./pages/admin/TaskDetail.jsx";
+import { NodesPage } from "./pages/admin/NodesPage.jsx";
+import { TasksPage } from "./pages/admin/TasksPage.jsx";
+import { AlertsPage } from "./pages/admin/AlertsPage.jsx";
+import { HistoryPage } from "./pages/admin/HistoryPage.jsx";
+import { UsersPage } from "./pages/admin/UsersPage.jsx";
+import { SettingsPage } from "./pages/admin/SettingsPage.jsx";
 
 function NotFound() {
   const { navigate } = useApp();
@@ -34,6 +29,44 @@ function NotFound() {
   );
 }
 
+function NoAccess() {
+  const { navigate } = useApp();
+  return (
+    <div className="card card-pad fade-up" style={{ textAlign: "center", padding: "56px 20px" }}>
+      <div style={{ width: 52, height: 52, borderRadius: 14, background: "var(--panel)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><Ic name="key" size={24} style={{ color: "var(--text-3)" }} /></div>
+      <h2 className="h2">无访问权限</h2>
+      <p className="muted" style={{ marginTop: 6 }}>当前为只读角色，该页面仅管理员可访问。</p>
+      <button className="btn primary" style={{ marginTop: 18 }} onClick={() => navigate("/admin/dashboard")}>返回仪表盘</button>
+    </div>
+  );
+}
+
+function AdminRouter({ parts }) {
+  const { auth, isAdmin } = useApp();
+  // 登录页（/admin）或未登录 → 登录
+  if (parts.length === 1 || !auth) return <Login />;
+
+  const sub = parts[1];
+  let page = null;
+  let needAdmin = false;
+
+  if (sub === "dashboard") {
+    page = parts[2] ? <TaskDetail taskId={parts[2]} /> : <Dashboard />;
+  } else if (sub === "nodes") { needAdmin = true; page = <NodesPage />; }
+  else if (sub === "tasks") { needAdmin = true; page = <TasksPage />; }
+  else if (sub === "alerts") {
+    if (parts[2] === "history") page = <HistoryPage />;
+    else { needAdmin = true; page = <AlertsPage />; }
+  }
+  else if (sub === "users") { needAdmin = true; page = <UsersPage />; }
+  else if (sub === "settings") { needAdmin = true; page = <SettingsPage />; }
+  else page = <Dashboard />;
+
+  if (needAdmin && !isAdmin) page = <NoAccess />;
+
+  return <AdminShell>{page}</AdminShell>;
+}
+
 function Router() {
   const { route } = useApp();
   const parts = route.parts;
@@ -41,7 +74,7 @@ function Router() {
   if (parts.length === 0) return <PublicHome />;
   if (parts[0] === "node" && parts[1]) return <NodeDetail id={parts[1]} />;
   if (parts[0] === "probe" && parts[1]) return <ProbeDetail id={parts[1]} />;
-  if (parts[0] === "admin") return <Placeholder title="管理端" hint="登录 + 仪表盘 + 节点/任务/告警/用户/设置 —— v0.3 起逐步落地。" />;
+  if (parts[0] === "admin") return <AdminRouter parts={parts} />;
   return <NotFound />;
 }
 
