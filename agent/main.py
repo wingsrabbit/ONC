@@ -22,7 +22,24 @@ import resources
 # —— 配置（来自环境变量）——
 NC_SERVER = os.environ.get("NC_SERVER")
 NC_TOKEN = os.environ.get("NC_TOKEN")
-AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.3")
+
+
+def _read_version():
+    """读镜像内 VERSION（与中心同版本号），缺失则回退常量。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in ("/app/VERSION", os.path.join(here, "VERSION"), "VERSION"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                v = f.read().strip()
+                if v:
+                    return v
+        except OSError:
+            continue
+    return "0.71"
+
+
+# 优先环境变量 AGENT_VERSION，否则读 VERSION 文件（不再写死陈旧常量）
+AGENT_VERSION = os.environ.get("AGENT_VERSION") or _read_version()
 
 # 拉取任务的固定周期（秒）
 TASK_FETCH_INTERVAL = 60
