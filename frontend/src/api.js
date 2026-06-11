@@ -88,3 +88,87 @@ export function getNodeHistory(id, minutes = 30) {
 export function getTaskHistory(id, minutes = 30) {
   return fetch(`/api/public/task/${id}/history?minutes=${minutes}`).then((r) => r.json());
 }
+
+/* ============================================================
+   管理端 API 客户端（带 Bearer 会话 token；!ok 抛出 data.error）
+   ============================================================ */
+const TOKEN_KEY = "onc-token";
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
+}
+export function setToken(t) {
+  try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch (e) { /* noop */ }
+}
+
+/** 带鉴权的统一请求封装：自动加 Bearer + JSON；!ok 抛出后端 error 文案。 */
+async function request(method, path, body) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const opts = { method, headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch("/api" + path, opts);
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok) {
+    const msg = (data && data.error) || `请求失败（HTTP ${r.status}）`;
+    throw new Error(msg);
+  }
+  return data == null ? {} : data;
+}
+
+/* —— 鉴权 —— */
+export async function apiLogin(username, password) {
+  // 登录不带旧 token（避免脏 token 干扰）
+  const r = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok) throw new Error((data && data.error) || "登录失败");
+  setToken(data.token);
+  return data.user; // {username, role}
+}
+export async function apiLogout() {
+  try { await request("POST", "/auth/logout"); } catch (e) { /* 忽略：本地照常登出 */ }
+  setToken("");
+}
+export function apiMe() { return request("GET", "/auth/me"); } // → {user}
+
+/* —— 节点 —— */
+export function apiListNodes() { return request("GET", "/nodes"); }                 // → {nodes}
+export function apiCreateNode(body) { return request("POST", "/nodes", body); }      // → {id,name,token}
+export function apiUpdateNode(id, body) { return request("PATCH", "/nodes/" + id, body); }
+export function apiDeleteNode(id) { return request("DELETE", "/nodes/" + id); }
+export function apiRegenNodeToken(id) { return request("POST", `/nodes/${id}/token`); } // → {token}
+
+/* —— 任务 —— */
+export function apiListTasks() { return request("GET", "/tasks"); }                  // → {tasks}
+export function apiCreateTask(body) { return request("POST", "/tasks", body); }      // → {id}
+export function apiUpdateTask(id, body) { return request("PATCH", "/tasks/" + id, body); }
+export function apiDeleteTask(id) { return request("DELETE", "/tasks/" + id); }
+
+/* —— 用户 —— */
+export function apiListUsers() { return request("GET", "/users"); }                  // → {users}
+export function apiCreateUser(body) { return request("POST", "/users", body); }      // → {id}
+export function apiDeleteUser(id) { return request("DELETE", "/users/" + id); }
+export function apiResetPassword(id, password) { return request("POST", `/users/${id}/reset-password`, { password }); }
+
+/* —— 告警渠道 —— */
+export function apiListChannels() { return request("GET", "/channels"); }            // → {channels}
+export function apiCreateChannel(body) { return request("POST", "/channels", body); } // → {id}
+export function apiUpdateChannel(id, body) { return request("PATCH", "/channels/" + id, body); }
+export function apiDeleteChannel(id) { return request("DELETE", "/channels/" + id); }
+
+/* —— 设置 —— */
+export function apiGetSettings() { return request("GET", "/settings"); }             // → {settings}
+export function apiPutSettings(body) { return request("PUT", "/settings", body); }   // → {settings}
+
+/* —— 告警历史（任意登录角色） —— */
+export function apiAlertHistory(limit = 100) { return request("GET", `/alerts/history?limit=${limit}`); } // → {history}

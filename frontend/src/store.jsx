@@ -3,6 +3,7 @@
    ============================================================ */
 import React, { useState, useEffect, createContext, useContext } from "react";
 import { Ic } from "./ui.jsx";
+import { apiLogin, apiLogout, apiMe, getToken, setToken } from "./api.js";
 
 const AppCtx = createContext(null);
 export function useApp() { return useContext(AppCtx); }
@@ -37,19 +38,47 @@ export function AppProvider({ children }) {
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));
 
-  // —— 鉴权 + 角色 —— //
+  // —— 鉴权 + 角色（真实后端会话 token）—— //
+  // auth: { username, role } | null。本地缓存仅为首屏即时渲染，token 才是凭据。
   const [auth, setAuth] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("onc-auth") || "null"); } catch (e) { return null; }
+    try {
+      const a = JSON.parse(localStorage.getItem("onc-auth") || "null");
+      // 缓存了用户但 token 已丢失（如手动清理）→ 视为未登录
+      return a && getToken() ? a : null;
+    } catch (e) { return null; }
   });
-  const login = (user) => {
-    const a = { name: user.name, role: user.role };
-    setAuth(a); localStorage.setItem("onc-auth", JSON.stringify(a));
+  const persistAuth = (a) => {
+    if (a) localStorage.setItem("onc-auth", JSON.stringify(a));
+    else localStorage.removeItem("onc-auth");
   };
-  const logout = () => { setAuth(null); localStorage.removeItem("onc-auth"); navigate("/admin"); };
-  const setRole = (role) => {
-    setAuth((a) => { const n = { ...(a || {}), role }; localStorage.setItem("onc-auth", JSON.stringify(n)); return n; });
+  const applyAuth = (user) => {
+    const a = { username: user.username, role: user.role };
+    setAuth(a); persistAuth(a);
+    return a;
   };
-  const isAdmin = auth && auth.role === "admin";
+  /** 登录：调用后端，存 token + 用户。成功 resolve 用户，失败抛 error（页面捕获展示）。 */
+  const login = async (username, password) => {
+    const user = await apiLogin(username, password); // 失败抛出
+    return applyAuth(user);
+  };
+  const logout = () => {
+    apiLogout();            // best-effort 通知后端 + 清 token
+    setAuth(null); persistAuth(null);
+    navigate("/admin");
+  };
+  const isAdmin = !!(auth && auth.role === "admin");
+
+  // 有 token 时启动校验一次：若 token 失效/角色变化 → 同步本地状态。
+  useEffect(() => {
+    let alive = true;
+    if (getToken()) {
+      apiMe()
+        .then((d) => { if (alive && d && d.user) applyAuth(d.user); })
+        .catch(() => { if (alive) { setToken(""); setAuth(null); persistAuth(null); } });
+    }
+    // 仅启动时执行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // —— 刷新计时（"最后更新 Xs 前"） —— //
   const [tick, setTick] = useState(0);
@@ -77,12 +106,12 @@ export function AppProvider({ children }) {
     return () => clearInterval(t);
   }, []);
 
-  const api = {
+  const ctx = {
     route, navigate, theme, toggleTheme,
-    auth, login, logout, setRole, isAdmin,
+    auth, login, logout, isAdmin,
     tick, secondsAgo, clock,
   };
-  return <AppCtx.Provider value={api}>{children}</AppCtx.Provider>;
+  return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
 }
 
 function fmtClock() {
