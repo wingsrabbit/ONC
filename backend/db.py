@@ -631,6 +631,12 @@ DEFAULT_SETTINGS = {
     "global_alert_cooldown": 300,
     "default_probe_interval": 5,
     "default_probe_timeout": 5,
+    # Web 前置 / HTTPS（由内嵌 Caddy 落地，见 webserver.py）
+    "web_mode": "http",            # http | https-le | https-custom | https-selfsigned
+    "web_domain": "",             # https-le 必填；https-custom/selfsigned 可选
+    "web_email": "",              # Let's Encrypt 通知邮箱（可选）
+    "web_http_port": 80,
+    "web_https_port": 443,
 }
 
 

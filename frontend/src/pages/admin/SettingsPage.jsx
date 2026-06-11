@@ -4,9 +4,9 @@
          global_alert_cooldown, default_probe_interval, default_probe_timeout
    ============================================================ */
 import React, { useState, useEffect } from "react";
-import { Ic, useToast } from "../../ui.jsx";
+import { Ic, Tag, useToast } from "../../ui.jsx";
 import { PageHeader } from "./_common.jsx";
-import { apiGetSettings, apiPutSettings } from "../../api.js";
+import { apiGetSettings, apiPutSettings, apiGetWebConfig, apiSetWebConfig, apiSetWebCert } from "../../api.js";
 
 const DEFAULTS = {
   site_title: "TermRat 网络状态中心",
@@ -79,6 +79,8 @@ export function SettingsPage() {
           <SField label="全局告警冷却（秒）" hint="同一任务两次告警的最小间隔"><NumIn v={f.global_alert_cooldown} min={0} max={86400} on={(v) => set("global_alert_cooldown", v)} /></SField>
         </SettingsGroup>
 
+        <WebHttpsPanel />
+
         <div className="row end" style={{ position: "sticky", bottom: 0, paddingTop: 4 }}>
           <button className="btn primary lg" onClick={save} disabled={busy}><Ic name="check" size={16} />{busy ? "保存中…" : "保存设置"}</button>
         </div>
@@ -109,4 +111,137 @@ function SField({ label, hint, children }) {
 }
 function NumIn({ v, min, max, on }) {
   return <input className="input num" type="number" min={min} max={max} value={v} onChange={(e) => on(e.target.value)} />;
+}
+
+/* —— Web 访问 / HTTPS（内嵌 Caddy；独立的应用按钮，切换即热重载）—— */
+const WEB_MODES = [
+  { k: "http", t: "HTTP（默认）", d: "纯 HTTP，监听 80 端口" },
+  { k: "https-le", t: "HTTPS · Let's Encrypt", d: "自动签发，需域名解析到本机" },
+  { k: "https-custom", t: "HTTPS · 上传证书", d: "使用你上传的证书 / 私钥" },
+  { k: "https-selfsigned", t: "HTTPS · 自签名", d: "内部 CA 自签，适合纯 IP" },
+];
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+
+function WebHttpsPanel() {
+  const toast = useToast();
+  const [cfg, setCfg] = useState(null);
+  const [mode, setMode] = useState("http");
+  const [domain, setDomain] = useState("");
+  const [email, setEmail] = useState("");
+  const [httpPort, setHttpPort] = useState(80);
+  const [httpsPort, setHttpsPort] = useState(443);
+  const [certText, setCertText] = useState("");
+  const [keyText, setKeyText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const load = () =>
+    apiGetWebConfig().then((d) => {
+      setCfg(d);
+      setMode(d.web_mode || "http");
+      setDomain(d.web_domain || "");
+      setEmail(d.web_email || "");
+      setHttpPort(d.web_http_port ?? 80);
+      setHttpsPort(d.web_https_port ?? 443);
+    }).catch((e) => toast.error(e.message || "加载 Web 配置失败"));
+
+  useEffect(() => { load(); }, []); // eslint-disable-line
+
+  const uploadCert = async () => {
+    if (!certText.trim() || !keyText.trim()) { toast.error("请粘贴证书与私钥（PEM）"); return; }
+    setBusy(true);
+    try {
+      await apiSetWebCert({ cert: certText, key: keyText });
+      toast.success("证书已保存");
+      setCertText(""); setKeyText("");
+      await load();
+    } catch (e) { toast.error(e.message || "上传失败"); }
+    finally { setBusy(false); }
+  };
+
+  const apply = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const r = await apiSetWebConfig({
+        web_mode: mode, web_domain: domain.trim(), web_email: email.trim(),
+        web_http_port: Number(httpPort), web_https_port: Number(httpsPort),
+      });
+      setCfg(r);
+      const ok = r.applied !== false;
+      setResult({ ok, message: r.message || (ok ? "已应用并热重载 Caddy" : "应用失败") });
+      if (ok) toast.success("已应用 Web 配置"); else toast.error("应用失败");
+    } catch (e) {
+      setResult({ ok: false, message: e.message || "应用失败" });
+      toast.error(e.message || "应用失败");
+    } finally { setBusy(false); }
+  };
+
+  if (!cfg) return <div className="card card-pad"><div className="muted">加载 Web 配置…</div></div>;
+  const isHttps = mode !== "http";
+
+  return (
+    <div className="card card-pad">
+      <div className="row gap-8" style={{ marginBottom: 6 }}>
+        <span style={{ width: 28, height: 28, borderRadius: 8, background: "var(--primary-soft)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Ic name="globe" size={16} /></span>
+        <h3 className="h3" style={{ fontSize: 14.5 }}>Web 访问 / HTTPS</h3>
+      </div>
+      <div className="hint" style={{ marginTop: 0, marginBottom: 14 }}>浏览器访问由内嵌 Caddy 前置；切换后即时热重载（配置非法会保持原配置不中断）。agent 上报与兜底访问始终走独立端口 <span style={{ fontFamily: MONO }}>:{cfg.agent_port}</span>，不受影响。</div>
+
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 14 }}>
+        {WEB_MODES.map((m) => (
+          <button key={m.k} type="button" onClick={() => setMode(m.k)}
+            style={{ padding: "11px 13px", textAlign: "left", cursor: "pointer", borderRadius: 10,
+                     border: mode === m.k ? "1.5px solid var(--primary)" : "1px solid var(--border)",
+                     background: mode === m.k ? "var(--primary-soft)" : "var(--bg)" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3, color: mode === m.k ? "var(--primary)" : "var(--text)" }}>{m.t}</div>
+            <div className="hint" style={{ margin: 0 }}>{m.d}</div>
+          </button>
+        ))}
+      </div>
+
+      {isHttps && (
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label className={mode === "https-le" ? "req" : ""}>域名{mode === "https-le" ? "" : "（可选）"}</label>
+          <input className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="status.example.com" />
+          {mode === "https-le" && <div className="hint">需把该域名 A 记录解析到本机公网 IP，且 80 / 443 可达，Caddy 才能签发。</div>}
+        </div>
+      )}
+
+      {mode === "https-le" && (
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>通知邮箱（可选）</label>
+          <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+        </div>
+      )}
+
+      {mode === "https-custom" && (
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label>上传证书 {cfg.has_custom_cert ? <Tag tone="green">已存在证书</Tag> : <Tag tone="red">未上传</Tag>}</label>
+          <textarea className="input" rows={3} value={certText} onChange={(e) => setCertText(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----（含完整证书链）" style={{ fontFamily: MONO, fontSize: 12, marginBottom: 8 }} />
+          <textarea className="input" rows={3} value={keyText} onChange={(e) => setKeyText(e.target.value)} placeholder="-----BEGIN PRIVATE KEY-----" style={{ fontFamily: MONO, fontSize: 12 }} />
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn sm" type="button" onClick={uploadCert} disabled={busy}><Ic name="check" size={14} />保存证书</button>
+          </div>
+        </div>
+      )}
+
+      <div className="row gap-12" style={{ marginBottom: 12 }}>
+        <div className="field grow" style={{ marginBottom: 0 }}><label>HTTP 端口</label><input className="input num" type="number" value={httpPort} onChange={(e) => setHttpPort(e.target.value)} /></div>
+        <div className="field grow" style={{ marginBottom: 0 }}><label>HTTPS 端口</label><input className="input num" type="number" value={httpsPort} onChange={(e) => setHttpsPort(e.target.value)} disabled={!isHttps} /></div>
+      </div>
+
+      {mode === "https-selfsigned" && <div className="warn-note"><Ic name="warnTri" />自签名证书浏览器会提示「不安全 / 证书无效」，属正常现象，点继续访问即可。</div>}
+
+      <div className="hint" style={{ marginBottom: 4 }}>当前建议访问：<b>{(cfg.access_urls || []).join("  /  ") || "—"}</b></div>
+      <div className="hint" style={{ marginBottom: 12 }}>部署须发布端口：<span style={{ fontFamily: MONO }}>-p {httpPort}:{httpPort} -p {httpsPort}:{httpsPort} -p {cfg.agent_port}:{cfg.agent_port}</span></div>
+
+      {result && (result.ok
+        ? <div className="hint" style={{ color: "var(--green)", marginBottom: 12, fontWeight: 600 }}>✓ {result.message}</div>
+        : <div className="warn-note"><Ic name="warnTri" />{result.message}</div>)}
+
+      <div className="row end">
+        <button className="btn primary" onClick={apply} disabled={busy}><Ic name="check" size={15} />{busy ? "应用中…" : "应用并重载"}</button>
+      </div>
+    </div>
+  );
 }
