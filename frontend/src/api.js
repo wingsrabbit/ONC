@@ -176,5 +176,10 @@ export function apiDeleteChannel(id) { return request("DELETE", "/channels/" + i
 export function apiGetSettings() { return request("GET", "/settings"); }             // → {settings}
 export function apiPutSettings(body) { return request("PUT", "/settings", body); }   // → {settings}
 
+/* —— Web 前置 / HTTPS（内嵌 Caddy）—— */
+export function apiGetWebConfig() { return request("GET", "/web/config"); }            // → {web_mode,...,has_custom_cert,access_urls}
+export function apiSetWebConfig(body) { return request("POST", "/web/config", body); } // → {...,applied,message}
+export function apiSetWebCert(body) { return request("POST", "/web/cert", body); }     // {cert,key} → {ok,applied,message}
+
 /* —— 告警历史（任意登录角色） —— */
 export function apiAlertHistory(limit = 100) { return request("GET", `/alerts/history?limit=${limit}`); } // → {history}

@@ -13,6 +13,7 @@ from functools import wraps
 from flask import Blueprint, g, jsonify, request
 
 import db
+import webserver
 
 api_bp = Blueprint("api", __name__)
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
@@ -371,6 +372,77 @@ def admin_get_settings():
 @require_admin
 def admin_put_settings():
     return jsonify({"settings": db.update_settings(request.get_json(silent=True) or {})})
+
+
+# ----------------------------- Web 前置 / HTTPS（admin）-----------------------------
+def _web_config_payload():
+    s = db.get_settings()
+    return {
+        "web_mode": s.get("web_mode", "http"),
+        "web_domain": s.get("web_domain", ""),
+        "web_email": s.get("web_email", ""),
+        "web_http_port": s.get("web_http_port", 80),
+        "web_https_port": s.get("web_https_port", 443),
+        "has_custom_cert": webserver.has_custom_cert(),
+        "agent_port": 8080,
+        "access_urls": webserver.access_urls(s, host=(request.host.split(":")[0] if request.host else None)),
+    }
+
+
+@api_bp.get("/web/config")
+@require_admin
+def admin_get_web_config():
+    return jsonify(_web_config_payload())
+
+
+@api_bp.post("/web/config")
+@require_admin
+def admin_set_web_config():
+    body = request.get_json(silent=True) or {}
+    mode = (body.get("web_mode") or "http").strip()
+    if mode not in webserver.VALID_MODES:
+        return jsonify({"error": "无效的 web_mode"}), 400
+    domain = (body.get("web_domain") or "").strip()
+    if mode == "https-le" and not domain:
+        return jsonify({"error": "Let's Encrypt 模式必须填写域名"}), 400
+    if mode == "https-custom" and not webserver.has_custom_cert():
+        return jsonify({"error": "请先上传证书（web.crt + web.key）再切换到「上传证书」模式"}), 400
+    db.update_settings({
+        "web_mode": mode,
+        "web_domain": domain,
+        "web_email": (body.get("web_email") or "").strip(),
+        "web_http_port": _int_or(body.get("web_http_port"), 80),
+        "web_https_port": _int_or(body.get("web_https_port"), 443),
+    })
+    ok, msg = webserver.apply_settings(db.get_settings())
+    out = _web_config_payload()
+    out["applied"] = ok
+    out["message"] = msg or ("已应用并热重载 Caddy" if ok else "热重载失败")
+    return jsonify(out), (200 if ok else 502)
+
+
+@api_bp.post("/web/cert")
+@require_admin
+def admin_upload_web_cert():
+    body = request.get_json(silent=True) or {}
+    cert = (body.get("cert") or "").strip()
+    key = (body.get("key") or "").strip()
+    if "BEGIN CERTIFICATE" not in cert or "PRIVATE KEY" not in key:
+        return jsonify({"error": "证书或私钥格式不正确（应为 PEM；私钥需含 PRIVATE KEY）"}), 400
+    os.makedirs(webserver.CERT_DIR, exist_ok=True)
+    with open(webserver.CERT_PATH, "w", encoding="utf-8") as f:
+        f.write(cert + "\n")
+    with open(webserver.KEY_PATH, "w", encoding="utf-8") as f:
+        f.write(key + "\n")
+    try:
+        os.chmod(webserver.KEY_PATH, 0o600)
+    except OSError:
+        pass
+    s = db.get_settings()
+    applied, msg = True, "证书已保存"
+    if (s.get("web_mode") or "") == "https-custom":
+        applied, msg = webserver.apply_settings(s)
+    return jsonify({"ok": True, "has_custom_cert": True, "applied": applied, "message": msg})
 
 
 # ----------------------------- 告警历史（登录可见）-----------------------------
