@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+## [0.95] - 2026-06-15
+### 新增
+- **安装/更新/卸载脚本自适应系统语言**：`install-center.sh` / `install-agent.sh` / `update.sh` / `uninstall.sh` 根据 `LC_ALL`/`LC_MESSAGES`/`LANG` 判断——系统为中文（`zh*`）则输出中文，否则英文。每条提示用 `L '中文' 'English'` 双语包裹，含 4/4 步骤、角色标注、结果摘要、错误/用法提示。
+### 修复
+- 脚本里「变量紧跟中文标点」（如 `$DIR（`、`$NAME，`）在 bash 下会把多字节首字节并入变量名、`set -u` 报 `unbound variable`（且 `$(L 中 英)` 两个参数都会被展开，无论选哪种语言都会触发）。已对全部此类变量加 `${}` 花括号定界。
+
 ## [0.941] - 2026-06-15
 ### 修复
 - **复制按钮在 HTTP 下无效**：`CodeBlock`（接入 Token / 部署命令等）的复制只用了 `navigator.clipboard`，而该 API 仅在 **HTTPS / localhost（安全上下文）** 可用；纯 HTTP（如 `http://IP`）下 `navigator.clipboard` 为 undefined → 短路啥也没干，却仍弹「已复制」假成功。改为 `copyToClipboard()`：安全上下文用 Clipboard API，否则**回退 `execCommand('copy')`**（HTTP 可用），且**真复制成功才提示**、失败提示「请手动选择复制」。
