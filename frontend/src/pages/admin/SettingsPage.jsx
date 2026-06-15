@@ -5,6 +5,7 @@
    ============================================================ */
 import React, { useState, useEffect } from "react";
 import { Ic, Tag, useToast } from "../../ui.jsx";
+import { useApp } from "../../store.jsx";
 import { PageHeader } from "./_common.jsx";
 import { apiGetSettings, apiPutSettings, apiGetWebConfig, apiSetWebConfig, apiSetWebCert } from "../../api.js";
 
@@ -21,6 +22,7 @@ const DEFAULTS = {
 
 export function SettingsPage() {
   const toast = useToast();
+  const { refreshBrand } = useApp();
   const [f, setF] = useState(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,6 +64,7 @@ export function SettingsPage() {
       };
       const d = await apiPutSettings(payload);
       setF({ ...DEFAULTS, ...(d.settings || payload) });
+      if (refreshBrand) refreshBrand();   // 即时刷新侧栏 / 标题等品牌显示
       toast.success("保存成功");
     } catch (e) {
       toast.error(e.message || "保存失败");

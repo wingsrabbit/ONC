@@ -113,21 +113,18 @@ export function AppProvider({ children }) {
 
   // —— 品牌（名称 / 字母标 / Logo，公开取，可在系统设置自定义）—— //
   const [brand, setBrand] = useState({ name: "网络状态中心", subtitle: "实时服务器资源监控 · 网络质量探测", mark: "NC", logo: "" });
-  useEffect(() => {
-    let alive = true;
-    apiBranding().then((b) => {
-      if (!alive || !b) return;
-      const nb = { name: b.name || "网络状态中心", subtitle: b.subtitle || "", mark: b.mark || "NC", logo: b.logo || "" };
-      setBrand(nb);
-      if (nb.name) document.title = nb.name;
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
+  const refreshBrand = () => apiBranding().then((b) => {
+    if (!b) return;
+    const nb = { name: b.name || "网络状态中心", subtitle: b.subtitle || "", mark: b.mark || "NC", logo: b.logo || "" };
+    setBrand(nb);
+    if (nb.name) document.title = nb.name;
+  }).catch(() => {});
+  useEffect(() => { refreshBrand(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const ctx = {
     route, navigate, theme, toggleTheme,
     auth, login, setup, logout, isAdmin,
-    tick, secondsAgo, clock, brand,
+    tick, secondsAgo, clock, brand, refreshBrand,
   };
   return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
 }
