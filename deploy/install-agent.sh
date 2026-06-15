@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
-# TermRat-NC · Slave(agent) 一键安装
-#   自动：装 Docker(如缺) → 拉源码 → 构建 agent 镜像 → 起容器
-# 用法（-s 中心 agent 地址，-t 节点 Token，均来自管理端「节点管理」）：
+# TermRat-NC · Slave(agent) installer / 探针(agent) 一键安装
+#   Auto: install Docker → pull source → build agent image → run.
+# Usage / 用法 (-s center agent URL, -t node token, from admin Nodes page):
 #   curl -fsSL https://raw.githubusercontent.com/wingsrabbit/TermRat-NetworkCenter/main/deploy/install-agent.sh \
 #     | sudo bash -s -- -s http://MASTER_IP:8080 -t NODE_TOKEN
-# 可选环境变量（自定义 agent 互测端口，避免默认端口被屏蔽）：
-#   TNC_TEST_HTTP_PORT=8799  TNC_TEST_HTTPS_PORT=8443  TNC_TEST_UDP_PORT=8799
+#   Optional: TNC_TEST_HTTP_PORT=8799  TNC_TEST_HTTPS_PORT=8443  TNC_TEST_UDP_PORT=8799
 # ============================================================
 set -euo pipefail
+
+# —— Language: Chinese system → 中文, otherwise English ——
+_loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+case "$_loc" in zh*|*zh_CN*|*zh*) NC_LANG=zh ;; *) NC_LANG=en ;; esac
+L() { [ "$NC_LANG" = zh ] && printf '%s' "$1" || printf '%s' "$2"; }
 
 REPO="${TNC_REPO:-https://github.com/wingsrabbit/TermRat-NetworkCenter.git}"
 DIR="${TNC_DIR:-/opt/termrat-nc/src}"
@@ -26,25 +30,25 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -s|--server) SERVER="${2:-}"; shift 2 ;;
     -t|--token)  TOKEN="${2:-}";  shift 2 ;;
-    *) echo "未知参数：$1"; exit 1 ;;
+    *) echo "$(L "未知参数：$1" "Unknown arg: $1")"; exit 1 ;;
   esac
 done
 
 if [ -z "$SERVER" ] || [ -z "$TOKEN" ]; then
-  echo "用法：install-agent.sh -s http://MASTER_IP:8080 -t NODE_TOKEN"
-  echo "（-s 与 -t 来自管理端「节点管理 → 新增节点」）"
+  echo "$(L '用法：install-agent.sh -s http://MASTER_IP:8080 -t NODE_TOKEN' 'Usage: install-agent.sh -s http://MASTER_IP:8080 -t NODE_TOKEN')"
+  echo "$(L '（-s 与 -t 来自管理端「节点管理 → 新增节点」）' '(-s and -t come from the admin Nodes page → Add node)')"
   exit 1
 fi
 
-say "▶ 部署【探针 agent】——上报至 $SERVER（这是被监控机；中心 master 请用 install-center.sh）"
-say "1/4 检查 Docker ..."
+say "$(L "▶ 部署【探针 agent】——上报至 ${SERVER}（这是被监控机；中心 master 请用 install-center.sh）" "▶ Installing [agent] — reports to ${SERVER} (this is a monitored host; for the master use install-center.sh)")"
+say "$(L '1/4 检查 Docker ...' '1/4 Checking Docker ...')"
 if ! command -v docker >/dev/null 2>&1; then
-  say "    未检测到 Docker，自动安装中（get.docker.com）..."
+  say "$(L '    未检测到 Docker，自动安装中（get.docker.com）...' '    Docker not found, installing (get.docker.com) ...')"
   curl -fsSL https://get.docker.com | sh
   systemctl enable --now docker 2>/dev/null || true
 fi
 
-say "2/4 获取源码 -> $DIR"
+say "$(L "2/4 获取源码 -> $DIR" "2/4 Fetching source -> $DIR")"
 mkdir -p "$(dirname "$DIR")"
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" fetch --depth 1 origin main && git -C "$DIR" reset --hard origin/main
@@ -52,13 +56,13 @@ else
   git clone --depth 1 "$REPO" "$DIR"
 fi
 
-say "3/4 构建 agent 镜像 $IMAGE ..."
-# 根上下文 + -f agent/Dockerfile（以便 COPY 顶层 VERSION）
+say "$(L "3/4 构建 agent 镜像 $IMAGE ..." "3/4 Building agent image $IMAGE ...")"
+# root context + -f agent/Dockerfile (to COPY top-level VERSION)
 docker build -f "$DIR/agent/Dockerfile" -t "$IMAGE" "$DIR"
 
-say "4/4 启动 agent 容器 ..."
+say "$(L '4/4 启动 agent 容器 ...' '4/4 Starting agent container ...')"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-# --network host：探测/测试服需真实网络栈；--pid host + NET_RAW：采主机资源 + ICMP
+# --network host: probes/test servers need real netstack; --pid host + NET_RAW: host metrics + ICMP
 docker run -d --name "$NAME" --restart unless-stopped \
   --network host --pid host --cap-add NET_RAW \
   -e NC_SERVER="$SERVER" -e NC_TOKEN="$TOKEN" \
@@ -66,8 +70,10 @@ docker run -d --name "$NAME" --restart unless-stopped \
   "$IMAGE"
 
 sleep 3
-say "完成。最近日志："
+say "$(L '完成。最近日志：' 'Done. Recent logs:')"
 docker logs --tail 6 "$NAME" 2>&1 || true
+
+if [ "$NC_LANG" = zh ]; then
 cat <<EOF
 
 ============================================================
@@ -77,3 +83,14 @@ cat <<EOF
  排查：docker logs -f ${NAME}   |   重启：docker restart ${NAME}
 ============================================================
 EOF
+else
+cat <<EOF
+
+============================================================
+ ✅ agent started; the node turns online in the admin Nodes page in ~10s.
+    Reports to : ${SERVER}
+    Test ports : HTTP ${HTTP_P} / HTTPS ${HTTPS_P} / UDP ${UDP_P}
+ Debug: docker logs -f ${NAME}   |   Restart: docker restart ${NAME}
+============================================================
+EOF
+fi
