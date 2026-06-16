@@ -61,7 +61,10 @@ fi
 docker run -d --name "$NAME" --restart unless-stopped \
   -p "${HTTP_PORT}:80" -p "${HTTPS_PORT}:443" -p "${AGENT_PORT}:8080" \
   $ADMIN_ENV \
-  -v "$DATA:/app/data" "$IMAGE"
+  -v "$DATA:/app/data" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$DIR:$DIR" \
+  "$IMAGE"
 
 sleep 5
 IP="$(curl -fsS4 -m 5 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')"

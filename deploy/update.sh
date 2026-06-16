@@ -105,6 +105,8 @@ update_agent() {
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   docker run -d --name "$NAME" --restart unless-stopped \
     --network host --pid host --cap-add NET_RAW \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$DIR:$DIR" \
     -e NC_SERVER="$SERVER" -e NC_TOKEN="$TOKEN" \
     -e NC_TEST_HTTP_PORT="$HP" -e NC_TEST_HTTPS_PORT="$HSP" -e NC_TEST_UDP_PORT="$UP" \
     nc-agent:latest >/dev/null

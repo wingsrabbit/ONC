@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Ic, Tag, Empty, Modal, Confirm, CodeBlock, Switch, useToast } from "../../ui.jsx";
 import { PageHeader, RowBtn, deploySnippet } from "./_common.jsx";
-import { apiListNodes, apiCreateNode, apiDeleteNode, apiUpdateNode, apiRegenNodeToken } from "../../api.js";
+import { apiListNodes, apiCreateNode, apiDeleteNode, apiUpdateNode, apiRegenNodeToken, apiNodeUpdate } from "../../api.js";
 
 function relAgo(ms) {
   if (!ms) return "从未上报";
@@ -33,6 +33,7 @@ export function NodesPage() {
   const [confirm, setConfirm] = useState(null);
   const [regen, setRegen] = useState(null);   // 待确认「重置 Token」的节点
   const [edit, setEdit] = useState(null);     // 正在编辑的节点
+  const [doUpd, setDoUpd] = useState(null);   // 待确认「一键更新」的节点
 
   const reload = async () => {
     try {
@@ -60,6 +61,13 @@ export function NodesPage() {
       setNodes((ns) => ns.filter((x) => x.id !== n.id));
       toast.success(`已删除节点「${n.name}」`);
     } catch (e) { toast.error(e.message || "删除失败"); }
+  };
+
+  const update = async (n) => {
+    try {
+      await apiNodeUpdate(n.id);
+      toast.success(`已通知「${n.name}」更新，约 10–60 秒后探针自更新`);
+    } catch (e) { toast.error(e.message || "通知更新失败"); }
   };
 
   const create = async (data) => {
@@ -123,6 +131,7 @@ export function NodesPage() {
                       <RowBtn icon="power" label={n.enabled ? "禁用" : "启用"} onClick={() => toggle(n)} />
                       <RowBtn icon="edit" label="编辑" onClick={() => setEdit(n)} />
                       <RowBtn icon="deploy" label="部署" onClick={() => setRegen(n)} />
+                      <RowBtn icon="refresh" label="更新" onClick={() => setDoUpd(n)} />
                       <RowBtn icon="trash" label="删除" tone="danger" onClick={() => setConfirm(n)} />
                     </div>
                   </td>
@@ -144,6 +153,9 @@ export function NodesPage() {
       {regen && <Confirm title="生成新接入 Token（部署 / 重新部署）" confirmText="生成新 Token"
         message={`将为节点「${regen.name}」生成新的接入 Token 与部署命令。⚠️ 若该节点已有运行中的探针，旧 Token 会立即失效、节点随即离线，需用新命令在目标服务器重新部署。仅在首次部署或更换探针时使用。`}
         onConfirm={() => doRegen(regen)} onClose={() => setRegen(null)} />}
+      {doUpd && <Confirm title="一键更新探针" confirmText="通知更新"
+        message={`将通知探针「${doUpd.name}」在下次拉取任务时自更新到最新版本（约 10–60 秒，期间该节点短暂离线重启）。需该探针已用 v1.1+ 方式部署（挂载 docker.sock）。`}
+        onConfirm={() => update(doUpd)} onClose={() => setDoUpd(null)} />}
     </div>
   );
 }

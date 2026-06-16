@@ -190,6 +190,14 @@ curl -fsSL https://raw.githubusercontent.com/wingsrabbit/ONC/main/deploy/update.
 > 管理后台**左上角显示当前版本**并与 GitHub 最新版对比（绿 = 最新 / 橙 = 有新版），一眼看出是否需要更新。
 > 若某次更新涉及无法热装的底层变更（脚本会提示），或想彻底重建镜像：中心可再用 `install-center.sh`、探针可再用 `install-agent.sh` 重跑一次。
 
+**网页一键更新（v1.1+，免 SSH）** —— 经容器挂载的 `/var/run/docker.sock` 让宿主 docker 自更新，仍是纯 docker 部署：
+
+- **本机（中心）**：「系统设置 → 维护 → 立即更新本机」，约 30–60 秒后容器自动重启为新版本。
+- **探针**：「节点管理 → 对应节点行 → 更新」，通知该探针在下次拉取任务时自更新。
+
+> ⚠️ 需用 **v1.1+ 的 `install-center.sh` / `install-agent.sh` 重新部署一次**才会挂上 `docker.sock`、启用网页一键更新。
+> ⚠️ **安全**：挂 `docker.sock` 的容器等同宿主 root 权限；一键更新均需管理员 + 二次确认，**请务必设置足够强的管理端密码**。
+
 **运维**：
 
 ```bash

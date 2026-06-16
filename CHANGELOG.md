@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+## [1.1] - 2026-06-16
+### 新增
+- **本机一键更新（系统设置 → 维护）**：点「立即更新本机」即让中心拉取最新代码自更新，约 30–60 秒后容器自动重启为新版本，无需 SSH。
+- **探针一键更新（节点管理 → 每行「更新」）**：点击即通知该探针在下次拉取任务时自更新——中心置 `nodes.pending_update`，agent `GET /agent/tasks` 响应夹带 `please_update`，agent 起一个**独立 helper 容器**跑 `update.sh`（agent 路径重建镜像并 rm+run 替换自己，helper 不被 rm 影响），无需登录节点 SSH。
+### 机制 / 部署
+- 经挂载的 **`/var/run/docker.sock`** 让容器指挥宿主 docker 自更新——**保持纯 docker 部署**（删容器即卸载、宿主无残留）；镜像内置 docker CLI（仅 CLI，static binary）+ git。
+- 中心/探针 Dockerfile 与 `install-center.sh` / `install-agent.sh` 加 `-v /var/run/docker.sock` + 源码目录挂载；`update.sh` 的 agent 重启命令补上同款挂载（确保自更新后仍能再更新）。
+- 新增后端：`POST /admin/self-update`（admin）、`POST /nodes/<id>/update`（admin）、`agent/tasks` 下发 `please_update`、`nodes.pending_update` 列。
+- ⚠️ **现有实例需用 v1.1 安装命令重新部署一次**才能启用（这次仍需 SSH，之后免）。
+- ⚠️ **安全**：挂 docker.sock 的容器等同宿主 root；自更新 / 节点更新均需 admin + 网页二次确认；**请确保管理端密码足够强**。
+
 ## [1.0] - 2026-06-16
 **ONC（Open Network Center）正式版 🎉**
 

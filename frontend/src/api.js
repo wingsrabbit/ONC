@@ -175,6 +175,8 @@ export function apiCreateNode(body) { return request("POST", "/nodes", body); } 
 export function apiUpdateNode(id, body) { return request("PATCH", "/nodes/" + id, body); }
 export function apiDeleteNode(id) { return request("DELETE", "/nodes/" + id); }
 export function apiRegenNodeToken(id) { return request("POST", `/nodes/${id}/token`); } // → {token}
+export function apiNodeUpdate(id) { return request("POST", `/nodes/${id}/update`); }     // 通知探针自更新
+export function apiSelfUpdate() { return request("POST", "/admin/self-update"); }        // 本机(中心)一键更新
 
 /* —— 任务 —— */
 export function apiListTasks() { return request("GET", "/tasks"); }                  // → {tasks}
