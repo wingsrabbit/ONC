@@ -4,10 +4,10 @@
          global_alert_cooldown, default_probe_interval, default_probe_timeout
    ============================================================ */
 import React, { useState, useEffect } from "react";
-import { Ic, Tag, useToast } from "../../ui.jsx";
+import { Ic, Tag, Confirm, useToast } from "../../ui.jsx";
 import { useApp } from "../../store.jsx";
 import { PageHeader } from "./_common.jsx";
-import { apiGetSettings, apiPutSettings, apiGetWebConfig, apiSetWebConfig, apiSetWebCert } from "../../api.js";
+import { apiGetSettings, apiPutSettings, apiGetWebConfig, apiSetWebConfig, apiSetWebCert, apiSelfUpdate } from "../../api.js";
 
 const DEFAULTS = {
   site_title: "网络状态中心",
@@ -19,6 +19,31 @@ const DEFAULTS = {
   default_probe_interval: 5,
   default_probe_timeout: 5,
 };
+
+/* 本机（中心）一键更新：经挂载的 docker.sock 后台跑 update.sh，完成后容器自重启 */
+function SelfUpdateBtn() {
+  const toast = useToast();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await apiSelfUpdate();
+      toast.success((r && r.message) || "更新已在后台启动");
+    } catch (e) { toast.error(e.message || "启动更新失败"); }
+    finally { setBusy(false); setConfirm(false); }
+  };
+  return (
+    <React.Fragment>
+      <button className="btn" type="button" onClick={() => setConfirm(true)} disabled={busy}>
+        <Ic name="refresh" size={14} className={busy ? "spin" : ""} />{busy ? "更新启动中…" : "立即更新本机"}
+      </button>
+      {confirm && <Confirm title="更新本机（中心）" confirmText="立即更新"
+        message="将拉取最新代码并自更新，约 30–60 秒后本容器自动重启为新版本，期间管理端会短暂中断。确认更新？"
+        onConfirm={run} onClose={() => setConfirm(false)} />}
+    </React.Fragment>
+  );
+}
 
 export function SettingsPage() {
   const toast = useToast();
@@ -107,6 +132,12 @@ export function SettingsPage() {
         </SettingsGroup>
 
         <WebHttpsPanel />
+
+        <SettingsGroup title="维护" icon="refresh">
+          <SField label="本机一键更新" hint="拉取最新代码并自更新；约 30–60 秒后容器自动重启为新版本。需 v1.1+ 部署（挂载 docker.sock）">
+            <SelfUpdateBtn />
+          </SField>
+        </SettingsGroup>
 
         <div className="row end" style={{ position: "sticky", bottom: 0, paddingTop: 4 }}>
           <button className="btn primary lg" onClick={save} disabled={busy}><Ic name="check" size={16} />{busy ? "保存中…" : "保存设置"}</button>

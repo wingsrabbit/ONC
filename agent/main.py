@@ -145,6 +145,24 @@ def _next_grid(now_epoch: float, interval: int) -> int:
     return int(math.ceil(now_epoch / interval) * interval)
 
 
+def self_update_agent():
+    """收到中心「请更新」指令：经挂载的 docker.sock 起一个独立 helper 容器跑 update.sh
+    （agent 路径会重建 nc-agent 镜像并 rm+run 替换本容器；helper 独立、不被 rm 影响）。
+    幂等由中心保证（pending_update 下发一次即清）。需 v1.1+ 部署（挂 docker.sock + 源码）。"""
+    import subprocess
+    src = os.environ.get("ONC_SRC", "/opt/onc/src")
+    try:
+        subprocess.Popen([
+            "docker", "run", "-d", "--rm",
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-v", f"{src}:{src}",
+            "--entrypoint", "bash", "nc-agent:latest", f"{src}/deploy/update.sh",
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("[self-update] 收到更新指令，已起 helper 容器重建并重启 agent ...")
+    except Exception as e:
+        print(f"[self-update] 启动 helper 失败（需 v1.1+ 部署挂载 docker.sock + 源码）：{e}")
+
+
 def main():
     _check_config()
     print(f"ONC agent starting; server={NC_SERVER}, version={AGENT_VERSION}")
@@ -212,6 +230,8 @@ def main():
                             f"[fetch_tasks] node={node.get('name')} "
                             f"tasks={len(tasks)} report_interval={report_interval}"
                         )
+                        if data.get("please_update"):
+                            self_update_agent()
 
                 # —— 2. 按各任务 interval 对齐墙钟网格调度（非阻塞）——
                 for task in tasks:

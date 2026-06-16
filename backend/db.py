@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     label_3       TEXT DEFAULT '',
     enabled       INTEGER DEFAULT 1,
     public_hidden INTEGER DEFAULT 0,
+    pending_update INTEGER DEFAULT 0,
     status        TEXT DEFAULT 'offline',
     last_seen     INTEGER,
     agent_version TEXT,
@@ -174,6 +175,7 @@ _TASK_MIGRATE_COLS = [
 # 老库迁移：nodes 新增列
 _NODE_MIGRATE_COLS = [
     ("public_hidden", "INTEGER DEFAULT 0"),
+    ("pending_update", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -261,6 +263,12 @@ def update_node(nid, **fields):
     cols = ", ".join(f"{k}=?" for k in sets)
     with get_conn() as c:
         c.execute(f"UPDATE nodes SET {cols} WHERE id=?", (*sets.values(), nid))
+
+
+def set_node_pending_update(nid, val):
+    """标记 / 清除「该探针待自更新」（agent 下次拉取任务时下发，下发后即清）。"""
+    with get_conn() as c:
+        c.execute("UPDATE nodes SET pending_update=? WHERE id=?", (1 if val else 0, nid))
 
 
 def delete_node(nid):

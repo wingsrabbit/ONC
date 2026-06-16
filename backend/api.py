@@ -237,6 +237,23 @@ def version_info():
     })
 
 
+@api_bp.post("/admin/self-update")
+@require_admin
+def admin_self_update():
+    """本机（中心）一键更新：经挂载的 docker.sock 后台跑 update.sh，完成后容器自重启为新版本。
+    需 v1.1+ install 挂载 /var/run/docker.sock 与源码目录，否则容器内无 docker / 源码会失败。"""
+    import subprocess
+    script = "/opt/onc/src/deploy/update.sh"
+    if not os.path.exists(script):
+        return jsonify({"error": "未找到 update.sh（需用 v1.1+ install-center.sh 重新部署，挂载源码目录与 docker.sock）"}), 400
+    try:
+        subprocess.Popen(["bash", "-c", f"bash {script} >> /app/data/self-update.log 2>&1"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:
+        return jsonify({"error": f"启动更新失败：{e}"}), 500
+    return jsonify({"ok": True, "message": "更新已在后台启动，约 30–60 秒后容器自动重启为新版本，请稍候刷新"})
+
+
 # ----------------------------- 品牌（公开）-----------------------------
 @api_bp.get("/branding")
 def branding():
@@ -348,6 +365,16 @@ def admin_regen_token(nid):
     if not db.get_node(nid):
         return jsonify({"error": "not found"}), 404
     return jsonify({"token": db.regenerate_node_token(nid)})
+
+
+@api_bp.post("/nodes/<nid>/update")
+@require_admin
+def admin_node_update(nid):
+    """通知某探针在下次拉取任务时自更新（经其挂载的 docker.sock 重建 agent 镜像并重启）。"""
+    if not db.get_node(nid):
+        return jsonify({"error": "not found"}), 404
+    db.set_node_pending_update(nid, 1)
+    return jsonify({"ok": True, "message": "已通知该探针更新，约 10–60 秒后拉取到指令即自更新"})
 
 
 # ----------------------------- 任务（admin）-----------------------------
@@ -581,10 +608,14 @@ def agent_tasks():
         "target": _resolve_target(t), "port": t["target_port"],
         "timeout": t["timeout"], "interval": t["interval"], "enabled": bool(t["enabled"]),
     } for t in tasks if t["enabled"]]
+    please_update = bool(node.get("pending_update"))
+    if please_update:
+        db.set_node_pending_update(node["id"], 0)   # 下发一次即清，避免反复更新
     return jsonify({
         "node": {"id": node["id"], "name": node["name"]},
         "report_interval": REPORT_INTERVAL,
         "tasks": out,
+        "please_update": please_update,
     })
 
 
