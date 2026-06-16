@@ -69,10 +69,10 @@ HP=""; [ "$HTTP_PORT" != "80" ] && HP=":${HTTP_PORT}"
 AP=""; [ "$AGENT_PORT" != "80" ] && AP=":${AGENT_PORT}"
 
 if [ -n "$ADMIN_USER" ]; then
-  ADMIN_LINE="$(L "管理端 : http://${IP}${HP}/termadmin   （已预置账号 ${ADMIN_USER}）" "Admin  : http://${IP}${HP}/termadmin   (preset account ${ADMIN_USER})")"
+  ADMIN_LINE="$(L "管理端 : http://${IP}${HP}/admin   （已预置账号 ${ADMIN_USER}）" "Admin  : http://${IP}${HP}/admin   (preset account ${ADMIN_USER})")"
   NEXT1="$(L '1) 登录管理端，建议在「用户」里改密。' '1) Log in; change the password under Users.')"
 else
-  ADMIN_LINE="$(L "管理端 : http://${IP}${HP}/termadmin   （首次打开进入安装向导，设置管理员账号）" "Admin  : http://${IP}${HP}/termadmin   (first open → setup wizard creates admin)")"
+  ADMIN_LINE="$(L "管理端 : http://${IP}${HP}/admin   （首次打开进入安装向导，设置管理员账号）" "Admin  : http://${IP}${HP}/admin   (first open → setup wizard creates admin)")"
   NEXT1="$(L '1) 打开管理端，按「初次安装向导」设置管理员用户名 / 密码。' '1) Open the admin; use the setup wizard to create admin user/password.')"
 fi
 

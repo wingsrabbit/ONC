@@ -8,7 +8,11 @@
 ## [1.0] - 2026-06-16
 **ONC（Open Network Center）正式版 🎉**
 
-统一的服务器资源 + 网络质量监控：公开状态页 + 管理后台（`/termadmin`）。单 Docker 镜像；中心 / 探针各一行命令**安装 · 更新 · 卸载**（`update.sh` 自动识别角色）；HTTPS（Let's Encrypt / 上传证书 / 自签）；品牌与 Logo 可自定义；首次安装向导；左上版本号与 GitHub 比对。
+统一的服务器资源 + 网络质量监控：公开状态页 + 管理后台（`/admin`）。单 Docker 镜像；中心 / 探针各一行命令**安装 · 更新 · 卸载**（`update.sh` 自动识别角色）；HTTPS（Let's Encrypt / 上传证书 / 自签）；品牌与 Logo 可自定义；首次安装向导；左上版本号与 GitHub 比对。
+
+### 本版变更
+- **管理后台路径可在安装向导自定义**（默认 `/admin`，不再写死）：后端新增 `admin_path` 设置 + 公开 branding 暴露并校验（仅 `[a-z0-9_-]`、避开保留段），前端路由全程动态拼接；安装向导新增「管理后台路径」字段。
+- **彻底移除项目早期命名指向**：源码 / 脚本 / 文档统一规范化，去掉已无用的旧库自动迁移逻辑。
 
 自 v0.971 起线上 nc.cloud 业务机测试通过、无新增功能变更，版本正式跨入 **1.0**。
 
@@ -30,7 +34,7 @@
 
 ## [0.96] - 2026-06-15
 ### 变更（去品牌化 → 通用开源 NC）
-- **全面去除 TermRat 指向性内容**，项目更名 **ONC（Open Network Center）**：仓库/安装/更新/版本检查 URL `TermRat-NetworkCenter → ONC`；镜像名 `termrat-nc → nc-center`、`termrat-nc-agent → nc-agent`；安装目录 `/opt/termrat-nc → /opt/onc`；数据库 `termrat.sqlite → nc.sqlite`（**带自动迁移**：旧库存在则首启改名、数据不丢，含 -wal/-shm）；前端 localStorage 键 `termrat-* → onc-*`；告警 Webhook 文案、自签证书 CN、`/api/health` name、各代码注释统一 ONC。
+- **全面去除早期品牌指向性内容，项目定名 ONC（Open Network Center）**：仓库 / 安装 / 更新 / 版本检查 URL、镜像名（`nc-center` / `nc-agent`）、安装目录（`/opt/onc`）、数据库（`nc.sqlite`）、前端 localStorage 键（`onc-*`）、告警 Webhook 文案、自签证书 CN、`/api/health` name、各代码注释统一为 ONC 命名；旧实例数据库**自动迁移、数据不丢**。
 ### 新增（品牌 / Logo 可自定义）
 - **管理端「系统设置 → 品牌 / 外观」**：可改**品牌名称**（显示在侧栏 / 登录 / 安装向导 / 公开页 / 浏览器标题）、**副标题**、**Logo 字母标**（1–3 字符），以及**上传自有 Logo 图片**（≤256KB，存为 data URL）。
 - 后端公开 `GET /api/branding`；新增 `brand_mark` / `brand_logo` 设置项，默认品牌名改为通用「网络状态中心」、默认字母标「NC」。
@@ -50,7 +54,7 @@
 
 ## [0.94] - 2026-06-15
 ### 新增
-- **一键卸载 `deploy/uninstall.sh`**：`curl … uninstall.sh | sudo bash` 移除 `nc-center` / `nc-agent` 容器 + `termrat-nc*` 镜像 + 安装目录 `/opt/onc`（含数据）。**只删本程序自己的容器/镜像，不碰机器上其它 Docker 容器**；默认**保留 Docker**（生产机可能他用）。选项 `--keep-data`（保留数据/证书）、`--purge-docker`（连 Docker 卸，动态 dpkg 查包名）。
+- **一键卸载 `deploy/uninstall.sh`**：`curl … uninstall.sh | sudo bash` 移除 `nc-center` / `nc-agent` 容器 + `nc-center` / `nc-agent` 镜像 + 安装目录 `/opt/onc`（含数据）。**只删本程序自己的容器/镜像，不碰机器上其它 Docker 容器**；默认**保留 Docker**（生产机可能他用）。选项 `--keep-data`（保留数据/证书）、`--purge-docker`（连 Docker 卸，动态 dpkg 查包名）。
 ### 变更
 - **安装脚本加醒目角色标注**：`install-center.sh` 开头打印「▶ 部署【中心 master】…要装探针请用 install-agent.sh」、`install-agent.sh` 打印「▶ 部署【探针 agent】…」，避免把中心 / 探针两条相似的 `curl|bash` 命令搞混（误把中心装到被监控机上）。
 - README 增「一键卸载」说明。
@@ -68,14 +72,14 @@
 
 ## [0.921] - 2026-06-15
 ### 变更
-- **去除 origin 兔子品牌**：项目源自 ServerStatus-Rabbit / NetworkStatus-Rabbit（均🐇吉祥物），适配时把兔子图标带进了 TermRat（Term + **Rat**，本不该用兔）。品牌标志改为简洁的 **TR 字母标**：替换 `store.jsx`(Brand) 与 `AdminShell.jsx`(侧栏 logo×2) 共 3 处用法、删除 `ui.jsx` 的 `rabbit` 图标定义、去掉 README 标题的 🐇。
+- **去除 origin 兔子品牌**：项目源自 ServerStatus-Rabbit / NetworkStatus-Rabbit（均🐇吉祥物），适配时把兔子图标带了进来。品牌标志改为简洁的字母标：替换 `store.jsx`(Brand) 与 `AdminShell.jsx`(侧栏 logo×2) 共 3 处用法、删除 `ui.jsx` 的 `rabbit` 图标定义、去掉 README 标题的 🐇。
 - README 架构说明弱化对 origin 技术栈的指名（InfluxDB → 「独立时序库」）。
 ### 检查
 - 全项目复检确认**无其它 origin 残留**：前端依赖仅 react/vite/echarts（无 vue/naive/pinia/socket.io/semantic）；无 ServerStatus/NetworkStatus/Hotaru/SocketIO 等代码或文案。（`wingsrabbit` 为仓库属主用户名，非污染。）
 
 ## [0.92] - 2026-06-15
 ### 新增
-- **初次安装向导**：全新部署（库内尚无用户）首次打开 `/termadmin` 自动进入安装向导，设置**管理员用户名 / 密码**（密码≥8 位、需确认）+ 站点标题 / 副标题，提交后创建管理员并直接登录进入仪表盘。
+- **初次安装向导**：全新部署（库内尚无用户）首次打开 `/admin` 自动进入安装向导，设置**管理员用户名 / 密码**（密码≥8 位、需确认）+ 站点标题 / 副标题，提交后创建管理员并直接登录进入仪表盘。
 - 后端 `GET /api/setup/status`（公开，返回 `needs_setup`）+ `POST /api/setup`（仅「无任何用户」时可用，创建首个管理员 + 可选站点信息 + 直接发会话；已初始化后返回 409，防重复 / 顶替）。
 ### 变更
 - **不再默认播种 admin/admin**：`_ensure_default_admin` 仅在**显式提供** `INITIAL_ADMIN_USER`+`INITIAL_ADMIN_PASSWORD`（无人值守部署）时播种；否则保持 0 用户 → 走安装向导。
@@ -90,7 +94,7 @@
 ### 移除（仓库瘦身，只留项目本身）
 - 删除 `docs/design-prototype/`（设计原型参考前端，已被 `frontend/src/` 正式实现取代）。
 - 删除过时的 `agent/README.md`（并入主 README）。
-- `.gitignore` 清理（移除已失效条目，泛化 `*.zip`）；`origin/` 取材 clone 与 `TermRat-NC.zip` 仅本地、从未入库。
+- `.gitignore` 清理（移除已失效条目，泛化 `*.zip`）；`origin/` 取材 clone 与 本地打包文件 仅本地、从未入库。
 
 ## [0.9] - 2026-06-11
 ### 新增
@@ -161,12 +165,12 @@
 
 ## [0.7] - 2026-06-11
 ### 新增
-- **管理端 `/termadmin` 全量落地**（前端）：WHMCS 风格登录页 → 鉴权外壳（折叠侧栏 + 顶栏 + 底栏）→ 仪表盘 + 各管理页。
+- **管理端 `/admin` 全量落地**（前端）：WHMCS 风格登录页 → 鉴权外壳（折叠侧栏 + 顶栏 + 底栏）→ 仪表盘 + 各管理页。
   - 登录页：用户名/密码（显隐切换）+ 记住我，调用 `/api/auth/login` 取会话 token。
   - 仪表盘：KPI（节点数/在线/告警/平均延迟）+ 任务卡片网格（搜索 + 协议筛选，复用 `/api/public/overview`）；任务详情：TimeChart + 30m–30d 范围选择 + 统计卡（均值/P95/抖动/丢包）。
   - 节点管理（表格 + 添加 → 一次性 token + Docker 部署片段、重生成 token、启用/禁用、删除）；任务管理（增删改 + 告警阈值，编辑仅改后端 PATCH 允许字段）；告警通道、告警历史、用户管理（重置密码/删除保留≥1 admin）、系统设置。
   - readonly 角色仅见「仪表盘 / 告警历史」，其余管理路由拦截为「无权限」。
-- `api.js` 增管理端客户端（Bearer 会话 token、统一 `request` 封装、节点/任务/用户/渠道/设置 CRUD + 告警历史），保留全部既有导出；`store.jsx` 接真实登录/登出 + `apiMe` 启动校验（内部 ctx 改名，避免与 api 导入冲突）；`App.jsx` 接管 `/termadmin` 路由（parts 解析），公开路由不变。
+- `api.js` 增管理端客户端（Bearer 会话 token、统一 `request` 封装、节点/任务/用户/渠道/设置 CRUD + 告警历史），保留全部既有导出；`store.jsx` 接真实登录/登出 + `apiMe` 启动校验（内部 ctx 改名，避免与 api 导入冲突）；`App.jsx` 接管 `/admin` 路由（parts 解析），公开路由不变。
 - 仅改 `frontend/`，后端/agent 未改动；`npm run build` 通过。
 
 ## [0.6] - 2026-06-11
