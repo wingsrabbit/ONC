@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+## [1.11] - 2026-06-29
+### 新增
+- **Public 前台轻量 i18n**：根据 URL `?lang=en` / `?lang=zh`、`localStorage.onc-lang`、`navigator.language`、默认中文的优先级显示英文或中文 UI。
+- **公开页语言切换**：Header 增加 English / 中文切换，切换时写入 `localStorage` 并更新 URL query，同时保留当前 hash route（如 `#/node/...`、`#/probe/...`）。
+- **前台文案覆盖**：公开首页、节点详情、探针详情、公共 header、主题切换、表格字段、状态、空状态、loading/error、时间单位等 UI 文案支持双语；节点名、线路名、区域名、tag、probe 名称、公告/后端配置业务名称保持原样。
+- **品牌默认 fallback 双语**：当后端仍返回默认品牌值时，前端按语言显示「网络状态中心 / 实时服务器资源监控 · 网络质量探测」或「Network Status Center / Real-time infrastructure and network probes」，不覆盖现有后端自定义设置。
+
 ## [1.1] - 2026-06-16
 ### 新增
 - **本机一键更新（系统设置 → 维护）**：点「立即更新本机」即让中心拉取最新代码自更新，约 30–60 秒后容器自动重启为新版本，无需 SSH。
